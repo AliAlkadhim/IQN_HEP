@@ -1,0 +1,9 @@
+! t tbar production at the LHC
+Beams:idA = 2212 !first incoming beam is a 2212, i.e. a proton.
+Beams:idB = 2212 !second beam is also a proton
+Beams:eCM = 8000. the cm energy of collisions.
+Top:gg2ttbar = on ! switch on the process g g -> t tbar.
+Top:qqbar2ttbar = on !switch on the process q qbar -> t tbar.
+
+
+

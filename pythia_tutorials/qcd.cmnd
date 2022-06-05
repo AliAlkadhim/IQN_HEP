@@ -1,0 +1,52 @@
+! ---------------------------------------------------------------------
+! File: qcd.txt
+! Pythia8 commands to simulate pp -> jj + X
+! Names are case-insensitive  -  but spelling-sensitive!
+! ---------------------------------------------------------------------
+! 1)
+Main:numberOfEvents   = 10000	   ! number of events to generate/read
+Main:timesAllowErrors =  1000      ! abort run after this many flawed events
+! ---------------------------------------------------------------------
+! 2)
+Init:showChangedSettings = on      ! list changed settings
+Init:showAllSettings = off         ! list all settings
+Init:showChangedParticleData = on  ! list changed particle data
+Init:showAllParticleData = off     ! list all particle data
+Next:numberCount = 1000            ! print message every n events
+Next:numberShowLHA = 1             ! print LHA information n times
+Next:numberShowInfo = 1            ! print event information n times
+Next:numberShowProcess = 10        ! print process record n times
+Next:numberShowEvent = 1           ! print event record n times
+Stat:showPartonLevel = on          ! additional statistics on MPI
+! ---------------------------------------------------------------------
+! 3) Beam parameter settings
+Beams:idA = 2212                   ! first beam, p = 2212, pbar = -2212
+Beams:idB = 2212                   ! second beam, p = 2212, pbar = -2212
+Beams:eCM = 13000.                 ! CM energy of collision (GeV)
+!PDF:pSet  = LHAPDF6:CT14nlo	   ! CTEQ 2014 PDF set / need LHAPDF
+! ---------------------------------------------------------------------
+! 4a) Process
+HardQCD:all		= on	   ! g g	-> g g
+			  	   ! g g 	-> q qbar  (q = u, d, s)
+				   ! q g 	-> q g
+				   ! qbar g	-> qbar g
+				   ! q q'  	-> q q'
+				   ! q qbar'  	-> q qbar'
+				   ! qbar qbar'	-> qbar qbar'
+				   ! q qbar	-> g g
+				   ! q qbar	-> q' qbar'
+
+PhaseSpace:pTHatMin	= 10	   ! minimum pT of parton (GeV)
+! ---------------------------------------------------------------------
+! 5) Parton level control.
+PartonLevel:ISR = on               ! Initial state radiation
+PartonLevel:FSR = on               ! Final state radiation
+PartonLevel:MPI = on               ! Multiple interactions
+! ---------------------------------------------------------------------
+HadronLevel:all = on		   ! turn on / off hadronization
+! ---------------------------------------------------------------------
+Random::setSeed = on
+Random:seed     = 31459
+
+
+
