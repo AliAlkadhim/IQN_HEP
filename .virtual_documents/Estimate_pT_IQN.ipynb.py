@@ -219,6 +219,12 @@ class RegressionEngine:
         return  torch.mean((outputs - targets)**2)
     
     @staticmethod
+    def average_absolute_error(targets, outputs):
+    # f and t must be of the same shape
+        return  torch.mean(abs(outputs - targets))
+    
+    
+    @staticmethod
     def average_cross_entropy_loss(targets, outputs):
         # f and t must be of the same shape
         loss = torch.where(targets > 0.5, torch.log(outputs), torch.log(1 - outputs))
@@ -229,8 +235,8 @@ class RegressionEngine:
         # f and t must be of the same shape
         tau = torch.rand(outputs.shape)
         return torch.mean(torch.where(targets >= outputs, 
-                                      tau * (targets - outputs), 
-                                      (1 - tau)*(outputs - targets)))
+                                      tau * abs(targets - outputs), 
+                                      (1 - tau)*abs(outputs - targets)))
 
     def train(self, data_loader):
         """the training function: takes the training dataloader"""
@@ -241,7 +247,7 @@ class RegressionEngine:
             inputs = data["x"]
             targets = data["y"]
             outputs = self.model(inputs)
-            loss = self.average_quadratic_loss(targets, outputs)
+            loss = self.average_quantile_loss(targets, outputs)
             loss.backward()
             self.optimizer.step()
             final_loss += loss.item()
@@ -256,7 +262,7 @@ class RegressionEngine:
             inputs = data["x"]#.to(self.device)
             targets = data["y"]#.to(self.device)
             outputs = self.model(inputs)
-            loss = self.average_quadratic_loss(targets, outputs)
+            loss = self.average_quantile_loss(targets, outputs)
             final_loss += loss.item()
             return outputs.flatten()
             #return final_loss / len(data_loader)
