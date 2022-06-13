@@ -67,7 +67,7 @@ df = pd.read_csv('Data.csv')
 df.head()
 
 
-df = df.iloc[:,5:]
+df = df.iloc[:,4:]
 df.head()
 
 
@@ -84,16 +84,16 @@ data
 target
 
 
+ntargets = 1
+train_data, test_data, train_targets, test_targets = train_test_split(data, target, test_size=0.2)
+
+
+
 # train_targets = train_targets.reshape(-1,1)
 # test_targets = test_targets.reshape(-1,1)
 
 print('target shape', train_targets.shape)
 print('input data shape', data.shape)
-
-
-ntargets = 1
-train_data, test_data, train_targets, test_targets = train_test_split(data, target, test_size=0.2)
-
 
 
 train_targets = train_targets.reshape(-1,1)
@@ -144,11 +144,11 @@ print(train_dataset[0], train_dataset)
 batch_size=5
 train_loader = torch.utils.data.DataLoader(train_dataset, 
                                            batch_size=batch_size, 
-                                           num_workers=2, 
+                                           num_workers=6, 
                                            shuffle=True)
 
 test_loader = torch.utils.data.DataLoader(test_dataset, 
-                                          batch_size=batch_size, num_workers=2)
+                                          batch_size=batch_size, num_workers=6)
 
 
 # from mymodels import RegressionModel
@@ -193,7 +193,7 @@ print('train_data.shape = ',train_data.shape)
 
 model =  RegressionModel(nfeatures=train_data.shape[1], 
                ntargets=1,
-               nlayers=8, 
+               nlayers=5, 
                hidden_size=16, 
                dropout=0.3)
 print(model)
@@ -251,7 +251,7 @@ class RegressionEngine:
             loss.backward()
             self.optimizer.step()
             final_loss += loss.item()
-            return final_loss / len(data_loader)
+        return final_loss / len(data_loader)
 
     
     def evaluate(self, data_loader):
@@ -264,11 +264,11 @@ class RegressionEngine:
             outputs = self.model(inputs)
             loss = self.average_quantile_loss(targets, outputs)
             final_loss += loss.item()
-            return outputs.flatten()
+        return final_loss / len(data_loader)
             #return final_loss / len(data_loader)
 
 
-def train(optimizer, engine, early_stopping_iter, epochs):
+def train(optimizer, engine, early_stopping_iter, epochs, save_model=False):
     train_losses, test_losses = [], []
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
     eng = RegressionEngine(model=model, optimizer = optimizer)
@@ -279,11 +279,13 @@ def train(optimizer, engine, early_stopping_iter, epochs):
     EPOCHS=epochs
     for epoch in range(EPOCHS):
         train_loss = eng.train(train_loader)
-        test_loss = eng.train(test_loader)
+        test_loss = eng.evaluate(test_loader)
         print("Epoch : get_ipython().run_line_magic("-10g,", " Training Loss: %-10g, Test Loss: %-10g\" % (epoch, train_loss, test_loss))")
         #print(f"{epoch}, {train_loss}, {test_loss}")
         if test_loss < best_loss:
             best_loss = test_loss
+            if save_model:
+                torch.save(model.state_dict(), "goodmodel.pth")
 
         else:
             early_stopping_counter += 1
@@ -320,7 +322,7 @@ def train(optimizer, engine, early_stopping_iter, epochs):
 optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
 train_losses, test_losses=train(optimizer, 
       engine =RegressionEngine(model=model, optimizer = optimizer),
-      early_stopping_iter = 100,
+      early_stopping_iter = 10,
       epochs=100)
 
 

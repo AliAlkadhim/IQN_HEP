@@ -1,0 +1,13 @@
+In your samples, I understand that you have
+* gen jets: "particles before they interact with the detector" 
+	- I assume those
+	are post-hadronization, right?
+* reco jets: "particles that would be identified from measured tracks
+and energy deposits in particle detectors"
+* raw reco jets: reco jets that are unfolded - applied more corrections so that 
+they look as similar as possible to gen jets.
+
+- do you compare gen to reco or gen to raw reco?
+
+- in order to compare to results of NP corrections, we need pre-hadronization/MPI and post-hadronization/MPI samples. 
+It might be nice to compare results to NP correction factors using this.
