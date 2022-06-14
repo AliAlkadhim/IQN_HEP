@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
+from torch.utils.data import Dataset
+
 # return a batch of data for the next step in minimization
 def get_batch(x, t, batch_size):
     # the numpy function choice(length, number)
@@ -187,3 +189,4 @@ def plot_average_loss(traces, ftsize=18):
     ax.legend(loc='upper right')
 
     plt.show()
+    

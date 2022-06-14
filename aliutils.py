@@ -88,20 +88,20 @@ class RegressionModel(nn.Module):
                 #here we choose its output layer as the hidden size (fully connected)
                 layers.append(nn.Linear(nfeatures, hidden_size))
                 #batch normalization
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Dropout(dropout))
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.Dropout(dropout))
                 #ReLU activation 
                 layers.append(nn.ReLU())
             else:
                 #if this is not the first layer (we dont have layers)
                 layers.append(nn.Linear(hidden_size, hidden_size))
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Dropout(dropout))
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.Dropout(dropout))
                 layers.append(nn.ReLU())
                 #output layer:
         layers.append(nn.Linear(hidden_size, ntargets)) 
         
-        layers.append(nn.Sigmoid())
+        # layers.append(nn.Sigmoid())
             #we have defined sequential model using the layers in oulist 
         self.model = nn.Sequential(*layers)
             

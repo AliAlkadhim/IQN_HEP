@@ -63,7 +63,7 @@ print('\nColumns:', columns)
 fields  = list(data.columns)[5:]
 print('\nFields:', fields)
 
-target  = 'RecoDatapT'
+target  = 'RecoDataphi'
 print('\nTarget:', target )
 
 features= [x for x in fields]
@@ -97,6 +97,9 @@ print('validation set size:   get_ipython().run_line_magic("6d'", " % valid_data
 print('test set size:         get_ipython().run_line_magic("6d'", " % test_data.shape[0])")
 
 
+target, features
+
+
 def split_t_x(df, target, source, scalers):
     # change from pandas dataframe format to a numpy array
     scaler_t, scaler_x = scalers
@@ -125,6 +128,16 @@ test_t,  test_x  = split_t_x(test_data,  target, features, scalers)
 train_t.shape, train_x.shape
 
 
+from time import time
+start = time()
+batch_size = 50
+N = 1000
+for i in range(N):
+    ut.get_batch(train_x, train_t, batch_size)
+endtime = 1e6*(time() - start)/N
+print('time: get_ipython().run_line_magic("10.1f", " micro-sec' %  endtime)")
+
+
 get_ipython().run_cell_magic("writefile", " iqnutil.py", """
 import numpy as np
 
@@ -134,6 +147,8 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
+
+from torch.utils.data import Dataset
 
 # return a batch of data for the next step in minimization
 def get_batch(x, t, batch_size):
@@ -313,14 +328,18 @@ def plot_average_loss(traces, ftsize=18):
     ax.grid(True, which="both", linestyle='-')
     ax.legend(loc='upper right')
 
-    plt.show()""")
+    plt.show()
+    """)
 
 
 import iqnutil as ut
 importlib.reload(ut);
 
 
-get_ipython().run_cell_magic("writefile", " iqn_model.py", """
+filename = 'iqn_model_phi.py'
+
+
+get_ipython().run_cell_magic("writefile", " {filename}", """
 import torch
 import torch.nn as nn
 
@@ -339,13 +358,13 @@ model = nn.Sequential(nn.Linear( 8, 50),
                       nn.Linear(50, 1)) """)
 
 
-import iqn_model as iqn
+import iqn_model_phi as iqn
 importlib.reload(iqn)
 model = iqn.model
 print(model)
 
 n_batch       = 50
-n_iterations  = 200000
+n_iterations  = 250000
 
 learning_rate = 2.e-4
 optimizer     = torch.optim.Adam(model.parameters(), 
@@ -367,26 +386,7 @@ traces = ut.train(model, optimizer,
 ut.plot_average_loss(traces)
 
 # save model parameter dictionary
-torch.save(model.state_dict(), 'iqn_model.dict')
-
-
-n_batch       = 50
-n_iterations  = 200000
-
-traces = ut.train(model, optimizer, 
-                  ut.average_quantile_loss,
-                  ut.get_batch,
-                  train_x, train_t, 
-                  valid_x, valid_t,
-                  n_batch, 
-                  n_iterations,
-                  traces,
-                  step=traces_step)
-
-ut.plot_average_loss(traces)
-
-# save model parameter dictionary
-torch.save(model.state_dict(), 'iqn_model400k.dict')
+torch.save(model.state_dict(), 'iqn_model_phi.dict')
 
 
 dnn = ut.ModelHandler(model, scalers)
@@ -400,17 +400,17 @@ def plot_model(df, dnn,
     # ----------------------------------------------
     # histogram RecoDatapT
     # ----------------------------------------------
-    xmin, xmax = 20, 60
-    xbins = 80
+    xmin, xmax = -5, 5
+    xbins = 100
     xstep = (xmax - xmin)/xbins
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=fgsize)
     
     ax.set_xlim(xmin, xmax)
     #ax.set_ylim(ymin, ymax)
-    ax.set_xlabel(r'$p_{T}$ (GeV)', fontsize=ftsize)
+    ax.set_xlabel(r'$\eta$', fontsize=ftsize)
 
-    ax.hist(df.RecoDatapT, 
+    ax.hist(df['RecoDataeta'], 
             bins=xbins, 
             range=(xmin, xmax), alpha=0.3, color='blue')
    
@@ -429,6 +429,9 @@ def plot_model(df, dnn,
 
 
 plot_model(test_data, dnn)
+
+
+
 
 
 

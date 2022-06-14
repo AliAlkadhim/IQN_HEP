@@ -393,6 +393,18 @@ traces = train(model, optimizer,
                   step=traces_step)
 
 plot_average_loss(traces)
+n_batch       = 50
+n_iterations  = 200000
+
+traces = train(model, optimizer, 
+                  average_quantile_loss,
+                  get_batch,
+                  train_x, train_t, 
+                  valid_x, valid_t,
+                  n_batch, 
+                  n_iterations,
+                  traces,
+                  step=traces_step)
 
 torch.save(model.state_dict(), 'trained_models/IQN_100k'+T+'.dict')
 
@@ -447,7 +459,7 @@ def plot_model(df, dnn,
     ax.set_xlabel('reco jet '+label, fontsize=ftsize)
     ax.set_ylabel(y_label_dict[T], fontsize=ftsize)
 
-    ax.hist(df.RecoDatapT, 
+    ax.hist(df[T], 
             bins=xbins, 
             range=(xmin, xmax), alpha=0.4, color='blue',
             label='Data')

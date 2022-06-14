@@ -292,7 +292,7 @@ torch.save(model.state_dict(), 'iqn_model400k.dict')
 # In[18]:
 
 
-dnn = utils.ModelHandler(model, scalers)
+dnn = ut.ModelHandler(model, scalers)
 
 
 # ### Plot results of trained model
