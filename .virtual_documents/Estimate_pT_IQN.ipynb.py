@@ -16,8 +16,8 @@ import scipy.stats as st
 import scipy.optimize as op
 
 # standard symbolic algebra module
-#import sympy as sm
-#sm.init_printing()
+import sympy as sm
+sm.init_printing()
 
 # module to save results
 import joblib as jb
@@ -25,7 +25,6 @@ import joblib as jb
 # pytorch
 import torch
 import torch.nn as nn
-from torch.utils import data
 
 # split data into a training set and a test set
 from sklearn.model_selection import train_test_split
@@ -36,12 +35,6 @@ from sklearn.preprocessing import StandardScaler
 import importlib
 
 get_ipython().run_line_magic("matplotlib", " inline")
-
-import matplotlib as mp
-import matplotlib.pyplot as plt
-
-import torch
-import torch.nn as nn
 
 # update fonts
 FONTSIZE = 18
@@ -59,15 +52,15 @@ mp.rc('text', usetex=True)
 #seed = 128
 #rnd  = np.random.RandomState(seed)
 
-from sklearn.model_selection import train_test_split
-import copy
+from torch.utils.data import Dataset
+
 
 
 df = pd.read_csv('Data.csv')
 df.head()
 
 
-df = df.iloc[:,4:]
+df = df.iloc[:,5:]
 df.head()
 
 
@@ -77,7 +70,7 @@ targets = kinematics#for reco level, but same names
 Networks = ['RecoNN', 'genNN']
 
 target = df['RecoDatapT'].to_numpy()
-data =  df.drop('RecoDatapT', axis=1).to_numpy()
+data =  df.drop('RecoDatapT', axis=1)
 data
 
 
@@ -86,6 +79,9 @@ target
 
 ntargets = 1
 train_data, test_data, train_targets, test_targets = train_test_split(data, target, test_size=0.2)
+
+
+
 
 
 
@@ -111,13 +107,323 @@ for var_name, var in zip(set_names, sets):
           + ' shape = ', var.shape, '\n')
 
 
-# sc = StandardScaler()#this is always recommended for logistic regression
-# train_data= sc.fit_transform(train_data)
-# test_data = sc.transform(test_data)
-# train_data.mean(), (train_data.std())**2#check to make sure mean=0, std=1
+data    = pd.read_csv('Data.csv')
+print('number of entries:', len(data))
+
+columns = list(data.columns)[1:]
+print('\nColumns:', columns)
+
+fields  = list(data.columns)[5:]
+print('\nFields:', fields)
+
+target  = 'RecoDatapT'
+print('\nTarget:', target )
+
+features= [x for x in fields]
+features.remove(target)
+
+print('\nFeatures:', features)
+
+data    = data[fields]
+data[:5]
 
 
-class CustomDataset:
+# Fraction of the data assigned as test data
+fraction = 20/100
+# Split data into a part for training and a part for testing
+train_data, test_data = train_test_split(data, 
+                                         test_size=fraction)
+
+# Split the training data into a part for training (fitting) and
+# a part for validating the training.
+fraction = 5/80
+train_data, valid_data = train_test_split(train_data, 
+                                          test_size=fraction)
+
+# reset the indices in the dataframes and drop the old ones
+train_data = train_data.reset_index(drop=True)
+valid_data = valid_data.reset_index(drop=True)
+test_data  = test_data.reset_index(drop=True)
+
+print('train set size:        get_ipython().run_line_magic("6d'", " % train_data.shape[0])")
+print('validation set size:   get_ipython().run_line_magic("6d'", " % valid_data.shape[0])")
+print('test set size:         get_ipython().run_line_magic("6d'", " % test_data.shape[0])")
+
+
+get_ipython().run_cell_magic("writefile", " iqnutil.py", """
+import numpy as np
+
+# the standard modules for high-quality plots
+import matplotlib as mp
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+
+# return a batch of data for the next step in minimization
+def get_batch(x, t, batch_size):
+    # the numpy function choice(length, number)
+    # selects at random "batch_size" integers from 
+    # the range [0, length-1] corresponding to the
+    # row indices.
+    rows    = np.random.choice(len(x), batch_size)
+    batch_x = x[rows]
+    batch_t = t[rows]
+    return (batch_x, batch_t)
+
+# Note: there are several average loss functions available 
+# in pytorch, but it's useful to know how to create your own.
+def average_quadratic_loss(f, t, x):
+    # f and t must be of the same shape
+    return  torch.mean((f - t)**2)
+
+def average_cross_entropy_loss(f, t, x):
+    # f and t must be of the same shape
+    loss = torch.where(t > 0.5, torch.log(f), torch.log(1 - f))
+    return -torch.mean(loss)
+
+def average_quantile_loss(f, t, x):
+    # f and t must be of the same shape
+    tau = x.T[-1] # last column is tau.
+    return torch.mean(torch.where(t >= f, 
+                                  tau * (t - f), 
+                                  (1 - tau)*(f - t)))
+
+# function to validate model during training.
+def validate(model, avloss, inputs, targets):
+    # make sure we set evaluation mode so that any training specific
+    # operations are disabled.
+    model.eval() # evaluation mode
+    
+    with torch.no_grad(): # no need to compute gradients wrt. x and t
+        x = torch.from_numpy(inputs).float()
+        t = torch.from_numpy(targets).float()
+        # remember to reshape!
+        o = model(x).reshape(t.shape)
+    return avloss(o, t, x)
+
+# A simple wrapper around a model to make using the latter more
+# convenient
+class ModelHandler:
+    def __init__(self, model, scalers):
+        self.model  = model
+        self.scaler_t, self.scaler_x = scalers
+        
+        self.scale  = self.scaler_t.scale_[0] # for output
+        self.mean   = self.scaler_t.mean_[0]  # for output
+        self.fields = self.scaler_x.feature_names_in_
+        
+    def __call__(self, df):
+        
+        # scale input data
+        x  = np.array(self.scaler_x.transform(df[self.fields]))
+        x  = torch.Tensor(x)
+
+        # go to evaluation mode
+        self.model.eval()
+    
+        # compute,reshape to a 1d array, and convert to a numpy array
+        Y  = self.model(x).view(-1, ).detach().numpy()
+        
+        # rescale output
+        Y  = self.mean + self.scale * Y
+        
+        if len(Y) == 1:
+            return Y[0]
+        else:
+            return Y
+        
+    def show(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                print(name, param.data)
+                print()
+        
+def train(model, optimizer, avloss, getbatch,
+          train_x, train_t, 
+          valid_x, valid_t,
+          batch_size, 
+          n_iterations, traces, 
+          step=50):
+    
+    # to keep track of average losses
+    xx, yy_t, yy_v = traces
+    
+    n = len(valid_x)
+    
+    print('Iteration vs average loss')
+    print("%10s\t%10s\t%10s" % \
+          ('iteration', 'train-set', 'valid-set'))
+    
+    for ii in range(n_iterations):
+
+        # set mode to training so that training specific 
+        # operations such as dropout are enabled.
+        model.train()
+        
+        # get a random sample (a batch) of data (as numpy arrays)
+        batch_x, batch_t = getbatch(train_x, train_t, batch_size)
+        
+        # convert the numpy arrays batch_x and batch_t to tensor 
+        # types. The PyTorch tensor type is the magic that permits 
+        # automatic differentiation with respect to parameters. 
+        # However, since we do not need to take the derivatives
+        # with respect to x and t, we disable this feature
+        with torch.no_grad(): # no need to compute gradients 
+            # wrt. x and t
+            x = torch.from_numpy(batch_x).float()
+            t = torch.from_numpy(batch_t).float()      
+
+        # compute the output of the model for the batch of data x
+        # Note: outputs is 
+        #   of shape (-1, 1), but the tensor targets, t, is
+        #   of shape (-1,)
+        # In order for the tensor operations with outputs and t
+        # to work correctly, it is necessary that they have the
+        # same shape. We can do this with the reshape method.
+        outputs = model(x).reshape(t.shape)
+   
+        # compute a noisy approximation to the average loss
+        empirical_risk = avloss(outputs, t, x)
+        
+        # use automatic differentiation to compute a 
+        # noisy approximation of the local gradient
+        optimizer.zero_grad()       # clear previous gradients
+        empirical_risk.backward()   # compute gradients
+        
+        # finally, advance one step in the direction of steepest 
+        # descent, using the noisy local gradient. 
+        optimizer.step()            # move one step
+        
+        if ii % step == 0:
+            
+            acc_t = validate(model, avloss, train_x[:n], train_t[:n]) 
+            acc_v = validate(model, avloss, valid_x[:n], valid_t[:n])
+
+            if len(xx) < 1:
+                xx.append(0)
+                print("%10d\t%10.6f\t%10.6f" % \
+                      (xx[-1], acc_t, acc_v))
+            else:
+                xx.append(xx[-1] + step)
+                print("\r%10d\t%10.6f\t%10.6f" % \
+                      (xx[-1], acc_t, acc_v), end='')
+                
+            yy_t.append(acc_t)
+            yy_v.append(acc_v)
+    print()      
+    return (xx, yy_t, yy_v)
+
+def plot_average_loss(traces, ftsize=18):
+    
+    xx, yy_t, yy_v = traces
+    
+    # create an empty figure
+    fig = plt.figure(figsize=(5, 5))
+    fig.tight_layout()
+    
+    # add a subplot to it
+    nrows, ncols, index = 1,1,1
+    ax  = fig.add_subplot(nrows,ncols,index)
+
+    ax.set_title("Average loss")
+    
+    ax.plot(xx, yy_t, 'b', lw=2, label='Training')
+    ax.plot(xx, yy_v, 'r', lw=2, label='Validation')
+
+    ax.set_xlabel('Iterations', fontsize=ftsize)
+    ax.set_ylabel('average loss', fontsize=ftsize)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.grid(True, which="both", linestyle='-')
+    ax.legend(loc='upper right')
+
+    plt.show()""")
+
+
+import iqnutil as ut
+importlib.reload(ut);
+
+
+get_ipython().run_cell_magic("writefile", " iqn_model.py", """
+import torch
+import torch.nn as nn
+
+model = nn.Sequential(nn.Linear( 8, 50),
+                      nn.ReLU(),
+                      
+                      nn.Linear(50, 50),
+                      nn.ReLU(),
+                      
+                      nn.Linear(50, 50),
+                      nn.ReLU(), 
+ 
+                      nn.Linear(50, 50),
+                      nn.ReLU(), 
+ 
+                      nn.Linear(50, 1)) """)
+
+
+import iqn_model as iqn
+importlib.reload(iqn)
+model = iqn.model
+print(model)
+
+n_batch       = 50
+n_iterations  = 200000
+
+learning_rate = 2.e-4
+optimizer     = torch.optim.Adam(model.parameters(), 
+                                 lr=learning_rate) 
+
+traces = ([], [], [])
+traces_step = 10
+
+traces = ut.train(model, optimizer, 
+                  ut.average_quantile_loss,
+                  ut.get_batch,
+                  train_x, train_t, 
+                  valid_x, valid_t,
+                  n_batch, 
+                  n_iterations,
+                  traces,
+                  step=traces_step)
+
+ut.plot_average_loss(traces)
+
+# save model parameter dictionary
+torch.save(model.state_dict(), 'iqn_model.dict')
+
+
+# def split_t_x(df, target, source, scalers):
+#     # change from pandas dataframe format to a numpy array
+#     scaler_t, scaler_x = scalers
+#     t = np.array(scaler_t.transform(df[target].to_numpy().reshape(-1, 1)))
+#     x = np.array(scaler_x.transform(df[source]))
+#     t = t.reshape(-1,)
+#     return t, x
+
+# # create a scaler for target
+# scaler_t = StandardScaler()
+# scaler_t.fit(train_data[target].to_numpy().reshape(-1, 1))
+
+# # create a scaler for inputs
+# scaler_x = StandardScaler()
+# scaler_x.fit(train_data[features])
+# # NB: undo scaling of tau, which is the last feature
+# scaler_x.mean_[-1] = 0
+# scaler_x.scale_[-1]= 1
+
+# scalers = [scaler_t, scaler_x]
+
+# train_t, train_x = split_t_x(train_data, target, features, scalers)
+# valid_t, valid_x = split_t_x(valid_data, target, features, scalers)
+# test_t,  test_x  = split_t_x(test_data,  target, features, scalers)
+
+# train_t.shape, train_x.shape
+
+
+class CustomDataset(Dataset):
     """This takes the index for the data and target and gives dictionary of tensors of data and targets.
     For example we could do train_dataset = CustomDataset(train_data, train_targets); test_dataset = CustomDataset(test_data, test_targets)
  where train and test_dataset are np arrays that are reshaped to (-1,1).
@@ -141,14 +447,36 @@ test_dataset = CustomDataset(test_data, test_targets)
 print(train_dataset[0], train_dataset)
 
 
-batch_size=5
+batch_size=10
 train_loader = torch.utils.data.DataLoader(train_dataset, 
                                            batch_size=batch_size, 
                                            num_workers=6, 
-                                           shuffle=True)
+                                           shuffle=False)
 
 test_loader = torch.utils.data.DataLoader(test_dataset, 
                                           batch_size=batch_size, num_workers=6)
+
+
+import time
+
+for i, data in enumerate(train_loader):
+    start=time.time()
+    while i<100:
+        data["x"]
+    end =time.time()
+    s = end-start
+print(s)
+
+
+def getbatch(x, t, batch_size):
+    # the numpy function choice(length, number)
+    # selects at random "batch_size" integers from 
+    # the range [0, length-1] corresponding to the
+    # row indices.
+    rows    = np.random.choice(len(x), batch_size)
+    batch_x = x[rows]
+    batch_t = t[rows]
+    return (batch_x, batch_t)
 
 
 # from mymodels import RegressionModel
@@ -164,15 +492,15 @@ class RegressionModel(nn.Module):
                 #here we choose its output layer as the hidden size (fully connected)
                 layers.append(nn.Linear(nfeatures, hidden_size))
                 #batch normalization
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Dropout(dropout))
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.Dropout(dropout))
                 #ReLU activation 
                 layers.append(nn.ReLU())
             else:
                 #if this is not the first layer (we dont have layers)
                 layers.append(nn.Linear(hidden_size, hidden_size))
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Dropout(dropout))
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.Dropout(dropout))
                 layers.append(nn.ReLU())
                 #output layer:
         layers.append(nn.Linear(hidden_size, ntargets)) 
@@ -193,7 +521,7 @@ print('train_data.shape = ',train_data.shape)
 
 model =  RegressionModel(nfeatures=train_data.shape[1], 
                ntargets=1,
-               nlayers=5, 
+               nlayers=8, 
                hidden_size=16, 
                dropout=0.3)
 print(model)
@@ -228,6 +556,7 @@ class RegressionEngine:
     def average_cross_entropy_loss(targets, outputs):
         # f and t must be of the same shape
         loss = torch.where(targets > 0.5, torch.log(outputs), torch.log(1 - outputs))
+        # the above means loss = log outputs, if target>0.5, and log(1-output) otherwise
         return -torch.mean(loss)
     
     @staticmethod
@@ -235,22 +564,26 @@ class RegressionEngine:
         # f and t must be of the same shape
         tau = torch.rand(outputs.shape)
         return torch.mean(torch.where(targets >= outputs, 
-                                      tau * abs(targets - outputs), 
-                                      (1 - tau)*abs(outputs - targets)))
+                                      tau * (targets - outputs), 
+                                      (1 - tau)*(outputs - targets)))
 
     def train(self, data_loader):
         """the training function: takes the training dataloader"""
         self.model.train()
         final_loss = 0
-        for data in data_loader:
-            self.optimizer.zero_grad()#only optimize weights for the current batch, otherwise it's meaningless!
-            inputs = data["x"]
-            targets = data["y"]
-            outputs = self.model(inputs)
-            loss = self.average_quantile_loss(targets, outputs)
-            loss.backward()
-            self.optimizer.step()
-            final_loss += loss.item()
+        batch_x, batch_t = getbatch(train_x, train_t, batch_size)
+        with torch.no_grad(): # no need to compute gradients 
+            # wrt. x and t
+            inputs = torch.from_numpy(batch_x).float()
+            targets = torch.from_numpy(batch_t).float() 
+        self.optimizer.zero_grad()#only optimize weights for the current batch, otherwise it's meaningless!
+        # inputs = data["x"]
+        # targets = data["y"]
+        outputs = self.model(inputs)
+        loss = self.average_quantile_loss(targets, outputs)
+        loss.backward()
+        self.optimizer.step()
+        final_loss += loss.item()
         return final_loss / len(data_loader)
 
     
@@ -258,14 +591,17 @@ class RegressionEngine:
         """the training function: takes the training dataloader"""
         self.model.eval()
         final_loss = 0
-        for data in data_loader:
-            inputs = data["x"]#.to(self.device)
-            targets = data["y"]#.to(self.device)
-            outputs = self.model(inputs)
-            loss = self.average_quantile_loss(targets, outputs)
-            final_loss += loss.item()
+        # for data in data_loader:
+        batch_x, batch_t = getbatch(train_x, train_t, batch_size)
+        with torch.no_grad(): # no need to compute gradients 
+            # wrt. x and t
+            inputs = torch.from_numpy(batch_x).float()
+            targets = torch.from_numpy(batch_t).float() 
+
+        outputs = self.model(inputs)
+        loss = self.average_quantile_loss(targets, outputs)
+        final_loss += loss.item()
         return final_loss / len(data_loader)
-            #return final_loss / len(data_loader)
 
 
 def train(optimizer, engine, early_stopping_iter, epochs, save_model=False):
@@ -319,11 +655,11 @@ def train(optimizer, engine, early_stopping_iter, epochs, save_model=False):
     
 
 
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr = 0.01)
 train_losses, test_losses=train(optimizer, 
       engine =RegressionEngine(model=model, optimizer = optimizer),
-      early_stopping_iter = 10,
-      epochs=100)
+      early_stopping_iter = 20,
+      epochs=1000)
 
 
 np.array(train_losses).shape, np.array(test_losses).shape
