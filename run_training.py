@@ -183,8 +183,8 @@ print(train_t.shape, train_x.shape)
 
 model =  utils.RegressionModel(nfeatures=train_x.shape[1], 
                ntargets=1,
-               nlayers=8, 
-               hidden_size=4, 
+               nlayers=16, 
+               hidden_size=16, 
                dropout=0.3)
 
 
@@ -392,9 +392,9 @@ traces = train(model, optimizer,
                   traces,
                   step=traces_step)
 
-plot_average_loss(traces)
-n_batch       = 50
-n_iterations  = 200000
+
+n_batch       = 500
+n_iterations  = 100000
 
 traces = train(model, optimizer, 
                   average_quantile_loss,
@@ -406,6 +406,7 @@ traces = train(model, optimizer,
                   traces,
                   step=traces_step)
 
+plot_average_loss(traces)
 torch.save(model.state_dict(), 'trained_models/IQN_100k'+T+'.dict')
 
 
@@ -425,17 +426,22 @@ torch.save(model.state_dict(), 'trained_models/IQN_100k'+T+'.dict')
 
 if T== 'RecoDatapT':
     label= '$p_T$ [GeV]'
+    x_min, x_max = 20, 60
 elif T== 'RecoDataeta':
     label = '$\eta$'
+    x_min, x_max = -5.4, 5.4
 elif T =='RecoDataphi':
     label='$\phi$'
+    x_min, x_max = -3.4, 3.4
 elif T == 'RecoDatam':
     label = ' $m$ [GeV]'
+    x_min, x_max = 0, 18
 
 
 y_label_dict ={'RecoDatapT':'$p(p_T)$'+' [ GeV'+'$^{-1} $'+']',
                     'RecoDataeta':'$p(\eta)$', 'RecoDataphi':'$p(\phi)$',
                     'RecoDatam':'$p(m)$'+' [ GeV'+'$^{-1} $'+']'}
+
 
 def plot_model(df, dnn,
             #    gfile='fig_model.png', 
@@ -446,7 +452,7 @@ def plot_model(df, dnn,
     # ----------------------------------------------
     # histogram RecoDatapT
     # ----------------------------------------------
-    xmin, xmax = 20, 60
+    xmin, xmax = x_min, x_max
     xbins = 80
     xstep = (xmax - xmin)/xbins
 
@@ -461,7 +467,7 @@ def plot_model(df, dnn,
 
     ax.hist(df[T], 
             bins=xbins, 
-            range=(xmin, xmax), alpha=0.4, color='blue',
+            range=(xmin, xmax), alpha=0.35, color='blue',
             label='Data')
    
     y = dnn(df)
@@ -469,8 +475,8 @@ def plot_model(df, dnn,
     ax.hist(y, 
             bins=xbins, 
             range=(xmin, xmax), 
-            alpha=0.4, 
-            color='red', label='IQN moodel')
+            alpha=0.35, 
+            color='red', label='IQN')
     ax.grid()
 
     plt.tight_layout()

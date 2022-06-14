@@ -53,7 +53,7 @@ mp.rc('text', usetex=True)
 #rnd  = np.random.RandomState(seed)
 
 from torch.utils.data import Dataset
-
+import aliutils as utils
 
 
 df = pd.read_csv('Data.csv')
@@ -64,47 +64,34 @@ df = df.iloc[:,5:]
 df.head()
 
 
+fig, ax = plt.subplots(1,4, figsize=(15,7.5))
+ax[0].hist(df.RecoDatapT,bins=100)
+ax[1].hist(df.RecoDataeta,bins=100)
+ax[2].hist(df.RecoDataphi,bins=100, range=(-3.4,3.4))
+ax[3].hist(df.RecoDatam,bins=100, range=(0,18))
+plt.show()
+
+
 levels = ['genData', 'RecoData']
 kinematics=['pT','eta','phi','m']
 targets = kinematics#for reco level, but same names
 Networks = ['RecoNN', 'genNN']
 
 target = df['RecoDatapT'].to_numpy()
-data =  df.drop('RecoDatapT', axis=1)
+data =  df.drop('RecoDatapT', axis=1).to_numpy()
 data
 
 
 target
 
 
-ntargets = 1
-train_data, test_data, train_targets, test_targets = train_test_split(data, target, test_size=0.2)
-
-
-
-
-
-
-# train_targets = train_targets.reshape(-1,1)
-# test_targets = test_targets.reshape(-1,1)
-
-print('target shape', train_targets.shape)
-print('input data shape', data.shape)
-
-
-train_targets = train_targets.reshape(-1,1)
-test_targets = test_targets.reshape(-1,1)
-
-sets= [train_data, test_data, train_targets, test_targets]
-set_names = ['train_data', 'test_data', 'train_targets', 'test_targets']
-# vnames = [name for name in globals() if globals()[name] is variable]
-
-def variable_string(variable):
-    return [k for k, v in locals().items() if v == variable][0]
-
-for var_name, var in zip(set_names, sets):
-    print(var_name 
-          + ' shape = ', var.shape, '\n')
+def split_t_x(df, target, source, scalers):
+    # change from pandas dataframe format to a numpy array
+    scaler_t, scaler_x = scalers
+    t = np.array(scaler_t.transform(df[target].to_numpy().reshape(-1, 1)))
+    x = np.array(scaler_x.transform(df[source]))
+    t = t.reshape(-1,)
+    return t, x
 
 
 data    = pd.read_csv('Data.csv')
@@ -148,6 +135,33 @@ test_data  = test_data.reset_index(drop=True)
 print('train set size:        get_ipython().run_line_magic("6d'", " % train_data.shape[0])")
 print('validation set size:   get_ipython().run_line_magic("6d'", " % valid_data.shape[0])")
 print('test set size:         get_ipython().run_line_magic("6d'", " % test_data.shape[0])")
+
+
+
+scaler_t = StandardScaler()
+scaler_t.fit(train_data[target].to_numpy().reshape(-1, 1))
+
+# create a scaler for inputs
+scaler_x = StandardScaler()
+scaler_x.fit(train_data[features])
+# NB: undo scaling of tau, which is the last feature
+scaler_x.mean_[-1] = 0
+scaler_x.scale_[-1]= 1
+
+scalers = [scaler_t, scaler_x]
+
+
+train_targets, train_data = split_t_x(train_data, target, features, scalers)
+valid_targets, valid_data = split_t_x(valid_data, target, features, scalers)
+test_targets,  test_data  = split_t_x(test_data,  target, features, scalers)
+
+
+
+sets= [train_data, test_data, train_targets, test_targets]
+set_names = ['train_data', 'test_data', 'train_targets', 'test_targets']
+for var_name, var in zip(set_names, sets):
+    print(var_name 
+          + ' shape = ', var.shape, '\n')
 
 
 get_ipython().run_cell_magic("writefile", " iqnutil.py", """
@@ -341,58 +355,28 @@ def plot_average_loss(traces, ftsize=18):
     plt.show()""")
 
 
-import iqnutil as ut
-importlib.reload(ut);
+# import iqnutil as ut
+# importlib.reload(ut);
 
 
-get_ipython().run_cell_magic("writefile", " iqn_model.py", """
-import torch
-import torch.nn as nn
+# get_ipython().run_line_magic("%writefile", " iqn_model.py")
 
-model = nn.Sequential(nn.Linear( 8, 50),
-                      nn.ReLU(),
+# import torch
+# import torch.nn as nn
+
+# model = nn.Sequential(nn.Linear( 8, 50),
+#                       nn.ReLU(),
                       
-                      nn.Linear(50, 50),
-                      nn.ReLU(),
+#                       nn.Linear(50, 50),
+#                       nn.ReLU(),
                       
-                      nn.Linear(50, 50),
-                      nn.ReLU(), 
+#                       nn.Linear(50, 50),
+#                       nn.ReLU(), 
  
-                      nn.Linear(50, 50),
-                      nn.ReLU(), 
+#                       nn.Linear(50, 50),
+#                       nn.ReLU(), 
  
-                      nn.Linear(50, 1)) """)
-
-
-import iqn_model as iqn
-importlib.reload(iqn)
-model = iqn.model
-print(model)
-
-n_batch       = 50
-n_iterations  = 200000
-
-learning_rate = 2.e-4
-optimizer     = torch.optim.Adam(model.parameters(), 
-                                 lr=learning_rate) 
-
-traces = ([], [], [])
-traces_step = 10
-
-traces = ut.train(model, optimizer, 
-                  ut.average_quantile_loss,
-                  ut.get_batch,
-                  train_x, train_t, 
-                  valid_x, valid_t,
-                  n_batch, 
-                  n_iterations,
-                  traces,
-                  step=traces_step)
-
-ut.plot_average_loss(traces)
-
-# save model parameter dictionary
-torch.save(model.state_dict(), 'iqn_model.dict')
+#                       nn.Linear(50, 1)) 
 
 
 # def split_t_x(df, target, source, scalers):
@@ -447,71 +431,17 @@ test_dataset = CustomDataset(test_data, test_targets)
 print(train_dataset[0], train_dataset)
 
 
-batch_size=10
+batch_size=50
 train_loader = torch.utils.data.DataLoader(train_dataset, 
                                            batch_size=batch_size, 
                                            num_workers=6, 
-                                           shuffle=False)
+                                           shuffle=True)
 
 test_loader = torch.utils.data.DataLoader(test_dataset, 
                                           batch_size=batch_size, num_workers=6)
 
 
-import time
-
-for i, data in enumerate(train_loader):
-    start=time.time()
-    while i<100:
-        data["x"]
-    end =time.time()
-    s = end-start
-print(s)
-
-
-def getbatch(x, t, batch_size):
-    # the numpy function choice(length, number)
-    # selects at random "batch_size" integers from 
-    # the range [0, length-1] corresponding to the
-    # row indices.
-    rows    = np.random.choice(len(x), batch_size)
-    batch_x = x[rows]
-    batch_t = t[rows]
-    return (batch_x, batch_t)
-
-
-# from mymodels import RegressionModel
-class RegressionModel(nn.Module):
-    #inherit from the super class
-    def __init__(self, nfeatures, ntargets, nlayers, hidden_size, dropout):
-        super().__init__()
-        layers = []
-        for _ in range(nlayers):
-            if len(layers) ==0:
-                #inital layer has to have size of input features as its input layer
-                #its output layer can have any size but it must match the size of the input layer of the next linear layer
-                #here we choose its output layer as the hidden size (fully connected)
-                layers.append(nn.Linear(nfeatures, hidden_size))
-                #batch normalization
-                # layers.append(nn.BatchNorm1d(hidden_size))
-                # layers.append(nn.Dropout(dropout))
-                #ReLU activation 
-                layers.append(nn.ReLU())
-            else:
-                #if this is not the first layer (we dont have layers)
-                layers.append(nn.Linear(hidden_size, hidden_size))
-                # layers.append(nn.BatchNorm1d(hidden_size))
-                # layers.append(nn.Dropout(dropout))
-                layers.append(nn.ReLU())
-                #output layer:
-        layers.append(nn.Linear(hidden_size, ntargets)) 
-        
-        layers.append(nn.Sigmoid())
-            #we have defined sequential model using the layers in oulist 
-        self.model = nn.Sequential(*layers)
-            
-    
-    def forward(self, x):
-        return self.model(x)
+import aliutils as utils
 
 
 # n_examples, n_inputs = train_data.shape
@@ -519,95 +449,18 @@ class RegressionModel(nn.Module):
 print('train_data.shape = ',train_data.shape)
 
 
-model =  RegressionModel(nfeatures=train_data.shape[1], 
+model =  utils.RegressionModel(nfeatures=train_data.shape[1], 
                ntargets=1,
-               nlayers=8, 
-               hidden_size=16, 
+               nlayers=2, 
+               hidden_size=4, 
                dropout=0.3)
 print(model)
-
-
-# get_ipython().run_line_magic("writefile", " training/RegressionEngine.py")
-class RegressionEngine:
-    """loss, training and evaluation"""
-    def __init__(self, model, optimizer):
-                 #, device):
-        self.model = model
-        #self.device= device
-        self.optimizer = optimizer
-        
-    #the loss function returns the loss function. It is a static method so it doesn't need self
-    @staticmethod
-    def quadratic_loss(targets, outputs):
-         return nn.MSELoss()(outputs, targets)
-
-    @staticmethod
-    def average_quadratic_loss(targets, outputs):
-    # f and t must be of the same shape
-        return  torch.mean((outputs - targets)**2)
-    
-    @staticmethod
-    def average_absolute_error(targets, outputs):
-    # f and t must be of the same shape
-        return  torch.mean(abs(outputs - targets))
-    
-    
-    @staticmethod
-    def average_cross_entropy_loss(targets, outputs):
-        # f and t must be of the same shape
-        loss = torch.where(targets > 0.5, torch.log(outputs), torch.log(1 - outputs))
-        # the above means loss = log outputs, if target>0.5, and log(1-output) otherwise
-        return -torch.mean(loss)
-    
-    @staticmethod
-    def average_quantile_loss(targets, outputs):
-        # f and t must be of the same shape
-        tau = torch.rand(outputs.shape)
-        return torch.mean(torch.where(targets >= outputs, 
-                                      tau * (targets - outputs), 
-                                      (1 - tau)*(outputs - targets)))
-
-    def train(self, data_loader):
-        """the training function: takes the training dataloader"""
-        self.model.train()
-        final_loss = 0
-        batch_x, batch_t = getbatch(train_x, train_t, batch_size)
-        with torch.no_grad(): # no need to compute gradients 
-            # wrt. x and t
-            inputs = torch.from_numpy(batch_x).float()
-            targets = torch.from_numpy(batch_t).float() 
-        self.optimizer.zero_grad()#only optimize weights for the current batch, otherwise it's meaningless!
-        # inputs = data["x"]
-        # targets = data["y"]
-        outputs = self.model(inputs)
-        loss = self.average_quantile_loss(targets, outputs)
-        loss.backward()
-        self.optimizer.step()
-        final_loss += loss.item()
-        return final_loss / len(data_loader)
-
-    
-    def evaluate(self, data_loader):
-        """the training function: takes the training dataloader"""
-        self.model.eval()
-        final_loss = 0
-        # for data in data_loader:
-        batch_x, batch_t = getbatch(train_x, train_t, batch_size)
-        with torch.no_grad(): # no need to compute gradients 
-            # wrt. x and t
-            inputs = torch.from_numpy(batch_x).float()
-            targets = torch.from_numpy(batch_t).float() 
-
-        outputs = self.model(inputs)
-        loss = self.average_quantile_loss(targets, outputs)
-        final_loss += loss.item()
-        return final_loss / len(data_loader)
 
 
 def train(optimizer, engine, early_stopping_iter, epochs, save_model=False):
     train_losses, test_losses = [], []
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
-    eng = RegressionEngine(model=model, optimizer = optimizer)
+    eng = utils.RegressionEngine(model=model, optimizer = optimizer)
     best_loss = np.inf
     early_stopping_iter = 10
     early_stopping_counter = 0
@@ -657,7 +510,7 @@ def train(optimizer, engine, early_stopping_iter, epochs, save_model=False):
 
 optimizer = torch.optim.Adam(model.parameters(), lr = 0.01)
 train_losses, test_losses=train(optimizer, 
-      engine =RegressionEngine(model=model, optimizer = optimizer),
+      engine =utils.RegressionEngine(model=model, optimizer = optimizer),
       early_stopping_iter = 20,
       epochs=1000)
 
@@ -717,3 +570,17 @@ def calc_phat_from_regressor(model, test_data):
     phat = phat.squeeze()
     phat=phat.detach().numpy().flatten()#detaches it from the computational history/prevent future computations from being tracked
     
+
+
+nrows=1; ncols=4
+fig, axarr = plt.subplots(nrows, ncols)
+kinematics =['RecoDatapT', 'RecoDataeta', 'RecoDataphi', 'RecoDatam']
+img_paths = ['images/'+ k + '100k_IQN.png' for k in kinematics]
+# for ax,im in zip(axarr.ravel(), img_paths):
+#     ax.imshow(im)
+
+
+plt.imshow(img_paths[0])
+
+
+
