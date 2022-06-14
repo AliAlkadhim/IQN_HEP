@@ -9,5 +9,5 @@ For example,
 
 ### `python run_training.py --T RecoDatapT`
 
-This generates a trained pytorch model parameter dictionary in `trained_models/', as well as compare with the `RecoData` target sample that you're estimating, and produce a comparison plot in `images/`
+This generates a trained pytorch model parameter dictionary in `trained_models/`, as well as compare with the `RecoData` target sample that you're estimating, and produce a comparison plot in `images/`
 
