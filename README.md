@@ -9,5 +9,5 @@ For example,
 
 ### `python run_training.py --T RecoDatapT`
 
-This uses the "gen" and "reco" level jets (8 columns + $\tau$), `Data.csv', which is composed of 100,000 examples, and generates a trained pytorch model parameter dictionary in `trained_models/`. It also compares with the `RecoData` target sample that you're estimating, and produce a comparison plot in `images/`.
+This uses the "gen" and "reco" level jets (8 columns + $\tau$), `Data.csv`, which is composed of 100,000 examples, and generates a trained pytorch model parameter dictionary in `trained_models/`. It also compares with the `RecoData` target sample that you're estimating, and produce a comparison plot in `images/`.
 
