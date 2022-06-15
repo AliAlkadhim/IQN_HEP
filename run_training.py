@@ -344,34 +344,45 @@ def train(model, optimizer, avloss, getbatch,
     print()      
     return (xx, yy_t, yy_v)
 
-def plot_average_loss(traces, ftsize=18):
+y_label_dict ={'RecoDatapT':'$p(p_T)$'+' [ GeV'+'$^{-1} $'+']',
+                    'RecoDataeta':'$p(\eta)$', 'RecoDataphi':'$p(\phi)$',
+                    'RecoDatam':'$p(m)$'+' [ GeV'+'$^{-1} $'+']'}
+
+loss_y_label_dict ={'RecoDatapT':'$p_T^{reco}$',
+                    'RecoDataeta':'$\eta^{reco}$', 'RecoDataphi':'$\phi^{reco}$',
+                    'RecoDatam':'$m^{reco}$'}
+
+def plot_average_loss(traces, ftsize=18,savefig=True):
     
     xx, yy_t, yy_v = traces
     
     # create an empty figure
-    fig = plt.figure(figsize=(5, 5))
+    fig = plt.figure(figsize=(8, 8))
     fig.tight_layout()
     
     # add a subplot to it
     nrows, ncols, index = 1,1,1
     ax  = fig.add_subplot(nrows,ncols,index)
 
-    ax.set_title("Average loss")
+    ax.set_title("Average Quantile Loss: "+loss_y_label_dict[T] )
     
     ax.plot(xx, yy_t, 'b', lw=2, label='Training')
     ax.plot(xx, yy_v, 'r', lw=2, label='Validation')
 
     ax.set_xlabel('Iterations', fontsize=ftsize)
-    ax.set_ylabel('average loss', fontsize=ftsize)
+    ax.set_ylabel('Quantile Loss ', fontsize=ftsize)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.grid(True, which="both", linestyle='-')
+    ax.tick_params('both')
     ax.legend(loc='upper right')
+    if savefig:
+        plt.savefig('images/loss_curves/loss_curve_'+T+'_.png')
 
     plt.show()
 
 
-n_batch       = 50
+n_batch       = 64
 n_iterations  = 200000
 # n_iterations=100
 
@@ -394,7 +405,7 @@ traces = train(model, optimizer,
 
 
 n_batch       = 500
-n_iterations  = 100000
+n_iterations  = 200000
 
 traces = train(model, optimizer, 
                   average_quantile_loss,
@@ -438,16 +449,15 @@ elif T == 'RecoDatam':
     x_min, x_max = 0, 18
 
 
-y_label_dict ={'RecoDatapT':'$p(p_T)$'+' [ GeV'+'$^{-1} $'+']',
-                    'RecoDataeta':'$p(\eta)$', 'RecoDataphi':'$p(\phi)$',
-                    'RecoDatam':'$p(m)$'+' [ GeV'+'$^{-1} $'+']'}
+
 
 
 def plot_model(df, dnn,
             #    gfile='fig_model.png', 
                save_image=True,
                fgsize=(8, 8), 
-               ftsize=20):
+               ftsize=20,
+               save_pred=True):
         
     # ----------------------------------------------
     # histogram RecoDatapT
@@ -471,7 +481,9 @@ def plot_model(df, dnn,
             label='Data')
    
     y = dnn(df)
-    
+    if save_pred:
+        pred_df = pd.DataFrame({T+'_predicted':y})
+        pred_df.to_csv('predicted_data/'+T+'_predicted.csv')
     ax.hist(y, 
             bins=xbins, 
             range=(xmin, xmax), 

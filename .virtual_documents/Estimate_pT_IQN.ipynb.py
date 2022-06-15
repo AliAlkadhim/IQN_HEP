@@ -583,4 +583,9 @@ img_paths = ['images/'+ k + '100k_IQN.png' for k in kinematics]
 plt.imshow(img_paths[0])
 
 
+import pandas as pd
+df = pd.read_csv('predicted_data/RecoDatapT_predicted.csv')
+df.head()
+
+
 
