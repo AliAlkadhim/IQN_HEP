@@ -120,18 +120,22 @@ print('test set size:         %6d' % test_data.shape[0])
 scaler_t = StandardScaler()
 scaler_t.fit(train_data[target].to_numpy().reshape(-1, 1))
 
+
+
 # create a scaler for inputs
 scaler_x = StandardScaler()
-scaler_x.fit(train_data[features])
+#fit only on input features, where the last of the features is target
+input_features=features[:-1]
+scaler_x.fit(train_data[input_features])
 # NB: undo scaling of tau, which is the last feature
 scaler_x.mean_[-1] = 0
 scaler_x.scale_[-1]= 1
 
 scalers = [scaler_t, scaler_x]
 
-train_t, train_x = utils.split_t_x(train_data, target, features, scalers)
-valid_t, valid_x = utils.split_t_x(valid_data, target, features, scalers)
-test_t,  test_x  = utils.split_t_x(test_data,  target, features, scalers)
+train_t, train_x = utils.split_t_x(train_data, target, input_features, scalers)
+valid_t, valid_x = utils.split_t_x(valid_data, target, input_features, scalers)
+test_t,  test_x  = utils.split_t_x(test_data,  target, input_features, scalers)
 
 print('TARGETS ARE', train_t)
 print()
@@ -389,7 +393,7 @@ loss_y_label_dict ={'RecoDatapT':'$p_T^{reco}$',
                     'RecoDataeta':'$\eta^{reco}$', 'RecoDataphi':'$\phi^{reco}$',
                     'RecoDatam':'$m^{reco}$'}
 
-def plot_average_loss(traces, ftsize=18,savefig=False):
+def plot_average_loss(traces, ftsize=18,savefig=True):
     
     xx, yy_t, yy_v = traces
     
@@ -414,13 +418,16 @@ def plot_average_loss(traces, ftsize=18,savefig=False):
     ax.tick_params('both')
     ax.legend(loc='upper right')
     if savefig:
-        plt.savefig('images/loss_curves/loss_curve_'+T+'_.png')
+        plt.savefig('images/loss_curves/loss_curve_'+T+'_Consecutive.png')
 
-    plt.show()
+    # plt.show()
 
 
 n_batch       = 64
-n_iterations  = 200
+if target=='RecoDatapT':
+    n_iterations  = 200000
+else:
+    n_iterations = 150000
 # n_iterations=100
 
 learning_rate = 2.e-4
@@ -442,7 +449,7 @@ traces = train(model, optimizer,
 
 
 n_batch       = 500
-n_iterations  = 200
+n_iterations  = 100000
 
 traces = train(model, optimizer, 
                   average_quantile_loss,
@@ -494,7 +501,7 @@ def plot_model(df, dnn,
                save_image=True,
                fgsize=(8, 8), 
                ftsize=20,
-               save_pred=False):
+               save_pred=True):
         
     # ----------------------------------------------
     # histogram RecoDatapT
@@ -515,24 +522,24 @@ def plot_model(df, dnn,
     ax.hist(df[T], 
             bins=xbins, 
             range=(xmin, xmax), alpha=0.35, color='blue',
-            label='Data')
+            label='Data',density=True)
    
     y = dnn(df)
     if save_pred:
         pred_df = pd.DataFrame({T+'_predicted':y})
-        pred_df.to_csv('predicted_data/'+T+'_predicted.csv')
+        pred_df.to_csv('predicted_data/'+T+'_predicted_consecutive.csv')
     ax.hist(y, 
             bins=xbins, 
             range=(xmin, xmax), 
             alpha=0.35, 
-            color='red', label='IQN')
+            color='red', label='IQN',density=True)
     ax.grid()
 
     plt.tight_layout()
     plt.legend()
     if save_image:
-        plt.savefig('images/'+T+'100k_IQN.png')
-    plt.show()
+        plt.savefig('images/'+T+'100k_IQN_Consecutive.png')
+    # plt.show()
 
 dnn = utils.ModelHandler(model, scalers)
 
