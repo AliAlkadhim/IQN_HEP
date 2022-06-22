@@ -512,7 +512,7 @@ def run(model, scalers, target,
         train_x, train_t, 
         valid_x, valid_t, traces,
         n_batch=50, 
-        n_iterations=200000, 
+        n_iterations=100000, 
         learning_rate=1.e-4, 
         traces_step=50, 
         traces_window=50,
@@ -556,7 +556,7 @@ elif T == 'RecoDatam':
 
 def plot_model(df, dnn, target, src,
                fgsize=(6, 6), 
-               ftsize=20):
+               ftsize=20,save_image=True, save_pred=True):
     gfile ='fig_model_%s.png' % target
     xbins = 100
     xmin  = src['xmin']
@@ -578,9 +578,7 @@ def plot_model(df, dnn, target, src,
             alpha=0.3, 
             color='blue', 
             density=True, 
-            label='simulation',
-            save_pred=True, 
-            save_image=True)
+            label='simulation')
    
     y = dnn(df)
     if save_pred:
@@ -610,7 +608,8 @@ def plot_model(df, dnn, target, src,
 #                hidden_size=4)
 import torch.nn as nn
 
-model = nn.Sequential(nn.Linear( train_x.shape[1], 50),
+model = nn.Sequential(
+                    nn.Linear( train_x.shape[1], 50),
                       nn.ReLU(),
                       
                       nn.Linear(50, 50),
@@ -632,4 +631,4 @@ dnn = run(model, scalers, target,
           train_x, train_t, 
           valid_x, valid_t, traces)
 
-plot_model(test_data, dnn)
+plot_model(test_data, dnn, target, source)

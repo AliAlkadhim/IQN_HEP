@@ -1,3 +1,4 @@
+import utils
 import os, sys
 
 # the standard module for tabular data
@@ -33,19 +34,10 @@ from sklearn.preprocessing import StandardScaler
 
 # to reload modules
 import importlib
-FONTSIZE = 18
-font = {'family' : 'serif',
-        'weight' : 'normal',
-        'size'   : FONTSIZE}
-mp.rc('font', **font)
-mp.rc('text', usetex=True)
-
-import aliutils as utils
 import mplhep as hep
 hep.style.use("CMS") # string aliases work too
+import run_training_consecutive as run_training
 
-
-##########################
 import argparse
 
 parser=argparse.ArgumentParser(description='train for different targets')
@@ -54,25 +46,53 @@ args = parser.parse_args()
 #target string
 T = args.T
 target = T
+source  = FIELDS[target]
+features= source['inputs']
+
 
 data    = pd.read_csv('Data.csv')
 print('number of entries:', len(data))
 
 columns = list(data.columns)[1:]
 print('\nColumns:', columns)
+print()
 
 fields  = list(data.columns)[5:]
-print('\nFields:', fields)
-
-# target  = 'RecoDatapT'
-print('\nTarget:', target )
-
-features= [x for x in fields]
-features.remove(target)
-
-print('\nFeatures:', features)
-
 data    = data[fields]
+
+X       = ['genDatapT', 'genDataeta', 'genDataphi', 'genDatam', 'tau']
+
+FIELDS  = {'RecoDatapT' : {'inputs': X, 
+                           'xlabel': r'$p_T$ (GeV)', 
+                           'xmin': 0, 
+                           'xmax':80},
+           
+           'RecoDataeta': {'inputs': ['RecoDatapT']+X, 
+                           'xlabel': r'$\eta$', 
+                           'xmin'  : -8, 
+                           'xmax'  :  8},
+           
+           'RecoDataphi': {'inputs': ['RecoDatapT','RecoDataeta']+X, 
+                           'xlabel': r'$\phi$',
+                           'xmin'  : -4,
+                           'xmax'  :  4},
+           
+           'RecoDatam'  : {'inputs': ['RecoDatapT',
+                                      'RecoDataeta','RecoDataphi']+X,
+                           'xlabel': r'$m$ (GeV)',
+                           'xmin'  : 0, 
+                           'xmax'  :20}
+          }
+
+
+
+
+
+
+#######################RUN/TEST/VALID DATA#################################
+
+
+# Fraction of the data assigned as test data
 fraction = 20/100
 # Split data into a part for training and a part for testing
 train_data, test_data = train_test_split(data, 
@@ -93,97 +113,72 @@ print('train set size:        %6d' % train_data.shape[0])
 print('validation set size:   %6d' % valid_data.shape[0])
 print('test set size:         %6d' % test_data.shape[0])
 
+# create a scaler for target
 scaler_t = StandardScaler()
 scaler_t.fit(train_data[target].to_numpy().reshape(-1, 1))
 
 # create a scaler for inputs
 scaler_x = StandardScaler()
 scaler_x.fit(train_data[features])
-# NB: undo scaling of tau, which is the last feature
+
+# NB: undo scaling of tau, which is always the last feature
+#this is a nice trick!
 scaler_x.mean_[-1] = 0
 scaler_x.scale_[-1]= 1
 
 scalers = [scaler_t, scaler_x]
 
-train_t, train_x = utils.split_t_x(train_data, target, features, scalers)
+train_t, train_x =utils. split_t_x(train_data, target, features, scalers)
 valid_t, valid_x = utils.split_t_x(valid_data, target, features, scalers)
 test_t,  test_x  = utils.split_t_x(test_data,  target, features, scalers)
+
+
+print('TARGETS ARE', train_t)
+print()
+print('TRAINING FEATURES', train_x)
 
 print(train_t.shape, train_x.shape)
 
 
 
-model =  utils.RegressionModel(nfeatures=train_x.shape[1], 
-               ntargets=1,
-               nlayers=8, 
-               hidden_size=4, 
-               dropout=0.3)
 
+#############
 
+import torch.nn as nn
 
-PATH='trained_models/IQN_100kRecoDatapT.dict'
-# 'trained_models/IQN_100k'+T+'.dict
-model.load_state_dict(torch.load(PATH))
-print(model)
+dnn = nn.Sequential(
+                    nn.Linear( train_x.shape[1], 50),
+                      nn.ReLU(),
+                      
+                      nn.Linear(50, 50),
+                      nn.ReLU(),
+                      
+                      nn.Linear(50, 50),
+                      nn.ReLU(), 
+ 
+                      nn.Linear(50, 50),
+                      nn.ReLU(), 
+ 
+                      nn.Linear(50, 1))
 
-# T='RecoDatapT'
+dnn.load_state_dict(torch.load('trained_models/iqn_model_CONSECUTIVE_%s.dict' % target))
+
 if T== 'RecoDatapT':
     label= '$p_T$ [GeV]'
+    x_min, x_max = 20, 60
 elif T== 'RecoDataeta':
     label = '$\eta$'
+    x_min, x_max = -5.4, 5.4
 elif T =='RecoDataphi':
     label='$\phi$'
+    x_min, x_max = -3.4, 3.4
 elif T == 'RecoDatam':
     label = ' $m$ [GeV]'
+    x_min, x_max = 0, 18
 
+# traces = ([], [], [], [])
+# dnn = run_training.run(model, scalers, target, 
+#           train_x, train_t, 
+#           valid_x, valid_t, traces)
 
-y_label_dict ={'RecoDatapT':'$p(p_T)$'+' [ GeV'+'$^{-1} $'+']',
-                    'RecoDataeta':'$p(\eta)$', 'RecoDataphi':'$p(\phi)$',
-                    'RecoDatam':'$p(m)$'+' [ GeV'+'$^{-1} $'+']'}
-
-def plot_model(df, dnn,
-               gfile='fig_model.png', 
-               save_image=False,
-               fgsize=(8, 8), 
-               ftsize=20):
-        
-    # ----------------------------------------------
-    # histogram RecoDatapT
-    # ----------------------------------------------
-    xmin, xmax = 20, 60
-    xbins = 80
-    xstep = (xmax - xmin)/xbins
-
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=fgsize)
-    
-    ax.set_xlim(xmin, xmax)
-
-    #ax.set_ylim(ymin, ymax)
-    # ax.set_xlabel(r'$p_{T}$ (GeV)', fontsize=ftsize)
-    ax.set_xlabel('reco jet '+label, fontsize=ftsize)
-    ax.set_ylabel(y_label_dict[T], fontsize=ftsize)
-
-    ax.hist(df.RecoDatapT, 
-            bins=xbins, 
-            range=(xmin, xmax), alpha=0.4, color='blue',
-            label='Data')
-   
-    y = dnn(df)
-    
-    ax.hist(y, 
-            bins=xbins, 
-            range=(xmin, xmax), 
-            alpha=0.4, 
-            color='red', label='IQN moodel')
-    ax.grid()
-
-    plt.tight_layout()
-    plt.legend()
-    if save_image:
-        plt.savefig(gfile)
-    plt.show()
-
-dnn = utils.ModelHandler(model, scalers)
-
-
-plot_model(test_data, dnn)
+# run_training.plot_model(test_data, dnn)
