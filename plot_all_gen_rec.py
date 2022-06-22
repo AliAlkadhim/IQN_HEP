@@ -101,6 +101,7 @@ def plot_all():
 
     plt.tight_layout()
     
+    
     plt.savefig('images/IQN_All_consecutive.png')
 
 plot_all()
