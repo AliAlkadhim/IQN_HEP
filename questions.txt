@@ -1,3 +1,8 @@
+The NN always performs better if only trained on the gen jets, when adding the reco jets of the other quantities in 
+the training features it just blows up....
+
+
+
 In your samples, I understand that you have
 * gen jets: "particles before they interact with the detector" 
 	- I assume those
@@ -11,3 +16,5 @@ they look as similar as possible to gen jets.
 
 - in order to compare to results of NP corrections, we need pre-hadronization/MPI and post-hadronization/MPI samples. 
 It might be nice to compare results to NP correction factors using this.
+
+- Also, we might try to do a full blown hypothesis testing to compare between the predicted densities and the reco densities using some test statistic like earth movers distance

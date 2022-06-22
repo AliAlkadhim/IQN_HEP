@@ -71,12 +71,50 @@ def split_t_x(df, target, source, scalers):
     # change from pandas dataframe format to a numpy array
     scaler_t, scaler_x = scalers
     t = np.array(scaler_t.transform(df[target].to_numpy().reshape(-1, 1)))
+    #where scaler_t is a StandardScaler() object, which has the .transorm method
     x = np.array(scaler_x.transform(df[source]))
     t = t.reshape(-1,)
     return t, x
 
-
 class RegressionModel(nn.Module):
+    #inherit from the super class
+    def __init__(self, nfeatures, ntargets, nlayers, hidden_size):
+        super().__init__()
+        layers = []
+        for _ in range(nlayers):
+            if len(layers) ==0:
+                #inital layer has to have size of input features as its input layer
+                #its output layer can have any size but it must match the size of the input layer of the next linear layer
+                #here we choose its output layer as the hidden size (fully connected)
+                layers.append(nn.Linear(nfeatures, hidden_size))
+                #batch normalization
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                #Dropout seems to worsen model performance
+                # layers.append(nn.Dropout(dropout))
+                #ReLU activation 
+                # layers.append(nn.ReLU())
+                layers.append(nn.LeakyReLU())
+            else:
+                #if this is not the first layer (we dont have layers)
+                layers.append(nn.Linear(hidden_size, hidden_size))
+                # layers.append(nn.BatchNorm1d(hidden_size))
+                #Dropout seems to worsen model performance
+                # layers.append(nn.Dropout(dropout))
+                # layers.append(nn.ReLU())
+                layers.append(nn.LeakyReLU())
+                #output layer:
+        layers.append(nn.Linear(hidden_size, ntargets)) 
+        
+        # ONLY IF ITS A CLASSIFICATION, ADD SIGMOID
+        #layers.append(nn.Sigmoid())
+            #we have defined sequential model using the layers in oulist 
+        self.model = nn.Sequential(*layers)
+            
+    
+    def forward(self, x):
+        return self.model(x)
+
+class RegularizedRegressionModel(nn.Module):
     #inherit from the super class
     def __init__(self, nfeatures, ntargets, nlayers, hidden_size, dropout):
         super().__init__()
@@ -90,7 +128,7 @@ class RegressionModel(nn.Module):
                 #batch normalization
                 layers.append(nn.BatchNorm1d(hidden_size))
                 #Dropout seems to worsen model performance
-                # layers.append(nn.Dropout(dropout))
+                layers.append(nn.Dropout(dropout))
                 #ReLU activation 
                 layers.append(nn.ReLU())
             else:
@@ -98,7 +136,7 @@ class RegressionModel(nn.Module):
                 layers.append(nn.Linear(hidden_size, hidden_size))
                 layers.append(nn.BatchNorm1d(hidden_size))
                 #Dropout seems to worsen model performance
-                # layers.append(nn.Dropout(dropout))
+                layers.append(nn.Dropout(dropout))
                 layers.append(nn.ReLU())
                 #output layer:
         layers.append(nn.Linear(hidden_size, ntargets)) 
@@ -181,6 +219,8 @@ class RegressionEngine:
             final_loss += loss.item()
         return final_loss / len(data_loader)
 
+
+
 class ModelHandler:
     def __init__(self, model, scalers):
         self.model  = model
@@ -215,3 +255,4 @@ class ModelHandler:
             if param.requires_grad:
                 print(name, param.data)
                 print()
+

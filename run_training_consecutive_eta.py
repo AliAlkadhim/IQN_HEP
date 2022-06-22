@@ -1,4 +1,4 @@
-import utils
+import aliutils as utils
 import os, sys
 
 # the standard module for tabular data
@@ -31,6 +31,7 @@ import torch.nn as nn
 from sklearn.model_selection import train_test_split
 # linearly transform a feature to zero mean and unit variance
 from sklearn.preprocessing import StandardScaler
+import optuna
 
 # to reload modules
 import importlib
@@ -38,13 +39,8 @@ import mplhep as hep
 hep.style.use("CMS") # string aliases work too
 
 
-import argparse
 
-parser=argparse.ArgumentParser(description='train for different targets')
-parser.add_argument('--T', type=str, help='the target that you want. Options: [RecoDatapT, RecoDataeta, RecoDataphi, RecoDatam]', required=True)
-args = parser.parse_args()
-#target string
-T = args.T
+
 
 
 
@@ -55,78 +51,47 @@ targets = kinematics#for reco level, but same names
 Networks = ['RecoNN', 'genNN']
 gen_features=['genDatapT','genDataeta','genDataphi','genDatam','tau']
 
-# target = 'RecoDatapT'
-# features = gen_features
-# def features_data(data):
-#     print('\nTarget:', target )
-#     features = gen_features
-#     if target== 'RecoDatapT':
-#         features.extend([target])
-#     elif target=='RecoDataeta':
-#         # features.extend(['RecoDatapT',target])
-#         features.extend([target])
-#     elif target=='RecoDataphi':
-#         features.extend(['RecoDatapT','RecoDataeta',target])
-#     elif target=='RecoDatam':
-#         features.extend(['RecoDatapT','RecoDataeta','RecoDataphi',target])    
-    # print('\nFeatures:', features)
-    # return features
+target = 'RecoDataeta'
+T=target
+features = gen_features
+def features_data(data):
+    print('\nTarget:', target )
+    features = gen_features
+    if target== 'RecoDatapT':
+        features.extend([target])
+    elif target=='RecoDataeta':
+        features.extend(['RecoDatapT',target])
+    elif target=='RecoDataphi':
+        features.extend(['RecoDatapT','RecoDataeta',target])
+    elif target=='RecoDatam':
+        features.extend(['RecoDatapT','RecoDataeta','RecoDataphi',target])
+    
+    print('\nFeatures:', features)
+    return features
 
-#######################DATA#################################
-
-
-data    = pd.read_csv('Data.csv')
-print('number of entries:', len(data))
-
-columns = list(data.columns)[1:]
-print('\nColumns:', columns)
-print()
-
-fields  = list(data.columns)[5:]
-data    = data[fields]
-
-X       = ['genDatapT', 'genDataeta', 'genDataphi', 'genDatam', 'tau']
-
-FIELDS  = {'RecoDatapT' : {'inputs': X, 
-                           'xlabel': r'$p_T$ (GeV)', 
-                           'xmin': 0, 
-                           'xmax':80},
-           
-           'RecoDataeta': {'inputs': ['RecoDatapT']+X, 
-                           'xlabel': r'$\eta$', 
-                           'xmin'  : -8, 
-                           'xmax'  :  8},
-           
-           'RecoDataphi': {'inputs': ['RecoDatapT','RecoDataeta']+X, 
-                           'xlabel': r'$\phi$',
-                           'xmin'  : -4,
-                           'xmax'  :  4},
-           
-           'RecoDatam'  : {'inputs': ['RecoDatapT',
-                                      'RecoDataeta','RecoDataphi']+X,
-                           'xlabel': r'$m$ (GeV)',
-                           'xmin'  : 0, 
-                           'xmax'  :20}
-          }
-
-target = T
-source  = FIELDS[target]
-features= source['inputs']
+df=pd.read_csv('Data.csv')
+features=features_data(df)
+data=df[features]
 
 
 
-#######################RUN/TEST/VALID DATA#################################
 
 
-# Fraction of the data assigned as test data
-fraction = 20/100
+
+
+
+
+########################################################
+
+
+fraction = 25/100
 # Split data into a part for training and a part for testing
 train_data, test_data = train_test_split(data, 
                                          test_size=fraction)
 
 # Split the training data into a part for training (fitting) and
 # a part for validating the training.
-fraction = 5/80
+fraction = 1/80
 train_data, valid_data = train_test_split(train_data, 
                                           test_size=fraction)
 
@@ -139,25 +104,25 @@ print('train set size:        %6d' % train_data.shape[0])
 print('validation set size:   %6d' % valid_data.shape[0])
 print('test set size:         %6d' % test_data.shape[0])
 
-# create a scaler for target
 scaler_t = StandardScaler()
 scaler_t.fit(train_data[target].to_numpy().reshape(-1, 1))
 
+
+
 # create a scaler for inputs
 scaler_x = StandardScaler()
-scaler_x.fit(train_data[features])
-
-# NB: undo scaling of tau, which is always the last feature
-#this is a nice trick!
+#fit only on input features, where the last of the features is target
+input_features=features[:-1]
+scaler_x.fit(train_data[input_features])
+# NB: undo scaling of tau, which is the last feature
 scaler_x.mean_[-1] = 0
 scaler_x.scale_[-1]= 1
 
 scalers = [scaler_t, scaler_x]
 
-train_t, train_x =utils. split_t_x(train_data, target, features, scalers)
-valid_t, valid_x = utils.split_t_x(valid_data, target, features, scalers)
-test_t,  test_x  = utils.split_t_x(test_data,  target, features, scalers)
-
+train_t, train_x = utils.split_t_x(train_data, target, input_features, scalers)
+valid_t, valid_x = utils.split_t_x(valid_data, target, input_features, scalers)
+test_t,  test_x  = utils.split_t_x(test_data,  target, input_features, scalers)
 
 print('TARGETS ARE', train_t)
 print()
@@ -265,6 +230,7 @@ def get_batch(x, t, batch_size):
     batch_x.T[-1] = np.random.uniform(0, 1, batch_size)
     return (batch_x, batch_t)
 
+
 # Note: there are several average loss functions available 
 # in pytorch, but it's useful to know how to create your own.
 def average_quadratic_loss(f, t, x):
@@ -278,10 +244,11 @@ def average_cross_entropy_loss(f, t, x):
 
 def average_quantile_loss(f, t, x):
     # f and t must be of the same shape
-    tau = x.T[-1] # last column is tau.
+    tau = x.T[-1] # last column is tau
     return torch.mean(torch.where(t >= f, 
                                   tau * (t - f), 
                                   (1 - tau)*(f - t)))
+
 
 # function to validate model during training.
 def validate(model, avloss, inputs, targets):
@@ -338,10 +305,11 @@ def train(model, optimizer, avloss, getbatch,
           valid_x, valid_t,
           batch_size, 
           n_iterations, traces, 
-          step=10, window=10):
+          step=50, save_model=False):
     
     # to keep track of average losses
-    xx, yy_t, yy_v, yy_v_avg = traces
+   
+    xx, yy_t, yy_v, tot_loss = traces
     
     n = len(valid_x)
     
@@ -349,12 +317,15 @@ def train(model, optimizer, avloss, getbatch,
     print("%10s\t%10s\t%10s" % \
           ('iteration', 'train-set', 'valid-set'))
     
+    best_loss=np.inf
+    early_stopping_iter = 10
+    early_stopping_counter = 0
     for ii in range(n_iterations):
 
         # set mode to training so that training specific 
         # operations such as dropout are enabled.
         model.train()
-        
+        final_test_loss, final_train_loss = 0, 0
         # get a random sample (a batch) of data (as numpy arrays)
         batch_x, batch_t = getbatch(train_x, train_t, batch_size)
         
@@ -366,7 +337,7 @@ def train(model, optimizer, avloss, getbatch,
         with torch.no_grad(): # no need to compute gradients 
             # wrt. x and t
             x = torch.from_numpy(batch_x).float()
-            t = torch.from_numpy(batch_t).float()      
+            t = torch.from_numpy(batch_t).float()
 
         # compute the output of the model for the batch of data x
         # Note: outputs is 
@@ -389,37 +360,49 @@ def train(model, optimizer, avloss, getbatch,
         # descent, using the noisy local gradient. 
         optimizer.step()            # move one step
         
+        
+
+        
+        final_train_loss += empirical_risk
+        # validate(model, avloss, inputs, targets)
+        final_test_loss +=  validate(model, avloss, x, t)
+        
+        print(f"{ii}, {final_train_loss}, {final_test_loss}")
+        if final_test_loss < best_loss:
+            best_loss=final_test_loss
+            if save_model:
+                torch.save(model.state_dict(),"trained_models_consecutive_{target}.bin")
+        else:
+            early_stopping_counter += 1
+
+        if early_stopping_counter > early_stopping_iter:
+            #if we are not improving for 10 iterations then break the loop
+            #we could save best model here
+            break
+
+
+####For plotting
         if ii % step == 0:
             
             acc_t = validate(model, avloss, train_x[:n], train_t[:n]) 
             acc_v = validate(model, avloss, valid_x[:n], valid_t[:n])
-            yy_t.append(acc_t)
-            yy_v.append(acc_v)
-            
-            # compute running average for validation data
-            len_yy_v = len(yy_v)
-            if   len_yy_v < window:
-                yy_v_avg.append( yy_v[-1] )
-            elif len_yy_v == window:
-                yy_v_avg.append( sum(yy_v) / window )
-            else:
-                acc_v_avg  = yy_v_avg[-1] * window
-                acc_v_avg += yy_v[-1] - yy_v[-window-1]
-                yy_v_avg.append(acc_v_avg / window)
-                        
+
             if len(xx) < 1:
                 xx.append(0)
                 print("%10d\t%10.6f\t%10.6f" % \
-                      (xx[-1], yy_t[-1], yy_v[-1]))
+                      (xx[-1], acc_t, acc_v))
             else:
                 xx.append(xx[-1] + step)
-                    
-                print("\r%10d\t%10.6f\t%10.6f\t%10.6f" % \
-                          (xx[-1], yy_t[-1], yy_v[-1], yy_v_avg[-1]), 
-                      end='')
-            
+                print("\r%10d\t%10.6f\t%10.6f" % \
+                      (xx[-1], acc_t, acc_v), end='')
+                
+            yy_t.append(acc_t)
+            yy_v.append(acc_v)
+
+
+
     print()      
-    return (xx, yy_t, yy_v, yy_v_avg)
+    return (xx, yy_t, yy_v, best_loss)
 
 y_label_dict ={'RecoDatapT':'$p(p_T)$'+' [ GeV'+'$^{-1} $'+']',
                     'RecoDataeta':'$p(\eta)$', 'RecoDataphi':'$p(\phi)$',
@@ -429,65 +412,61 @@ loss_y_label_dict ={'RecoDatapT':'$p_T^{reco}$',
                     'RecoDataeta':'$\eta^{reco}$', 'RecoDataphi':'$\phi^{reco}$',
                     'RecoDatam':'$m^{reco}$'}
 
-
-def plot_average_loss(traces, ftsize=18,savefig=True):
+def plot_average_loss(traces, ftsize=18,savefig=False):
     
-    xx, yy_t, yy_v, yy_v_avg = traces
+    xx, yy_t, yy_v, best_loss = traces
     
     # create an empty figure
-    fig = plt.figure(figsize=(6, 4.5))
+    fig = plt.figure(figsize=(8, 8))
     fig.tight_layout()
     
     # add a subplot to it
     nrows, ncols, index = 1,1,1
     ax  = fig.add_subplot(nrows,ncols,index)
 
-    ax.set_title("Average loss")
+    ax.set_title("Average Quantile Loss: "+loss_y_label_dict[T] )
     
     ax.plot(xx, yy_t, 'b', lw=2, label='Training')
     ax.plot(xx, yy_v, 'r', lw=2, label='Validation')
-    #ax.plot(xx, yy_v_avg, 'g', lw=2, label='Running average')
 
     ax.set_xlabel('Iterations', fontsize=ftsize)
-    ax.set_ylabel('average loss', fontsize=ftsize)
+    ax.set_ylabel('Quantile Loss ', fontsize=ftsize)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.grid(True, which="both", linestyle='-')
+    ax.tick_params('both')
     ax.legend(loc='upper right')
     if savefig:
         plt.savefig('images/loss_curves/loss_curve_'+T+'_Consecutive.png')
-    # plt.show()
+
+    plt.show()
 
 
-# n_batch       = 64
-# # if target=='RecoDatapT':
-# #     n_iterations  = 200000
-# # else:
-# #     n_iterations = 150000
-# n_iterations=100
+n_batch       = 6400
 
-# # learning_rate = 2.e-4
+n_iterations=30000
+
+learning_rate = 2.e-4
 # learning_rate =0.01
-# optimizer     = torch.optim.Adam(model.parameters(), 
-#                                  lr=learning_rate) 
+optimizer     = torch.optim.Adam(model.parameters(), 
+                                 lr=learning_rate) 
 
-# traces = ([], [], [])
-# traces_step = 10
+traces = ([], [], [], 0)
+traces_step = 10
 
-# traces = train(model, optimizer, 
-#                   average_quantile_loss,
-#                   get_batch,
-#                   train_x, train_t, 
-#                   valid_x, valid_t,
-#                   n_batch, 
-#                   n_iterations,
-#                   traces,
-#                   step=traces_step)
+traces = train(model, optimizer, 
+                  average_quantile_loss,
+                  get_batch,
+                  train_x, train_t, 
+                  valid_x, valid_t,
+                  n_batch, 
+                  n_iterations,
+                  traces,
+                  step=traces_step)
 
 
 # n_batch       = 50
 # n_iterations  = 10000
-
 # traces = train(model, optimizer, 
 #                   average_quantile_loss,
 #                   get_batch,
@@ -496,48 +475,34 @@ def plot_average_loss(traces, ftsize=18,savefig=True):
 #                   n_batch, 
 #                   n_iterations,
 #                   traces,
-#                   step=traces_step)
+                #   step=traces_step)
 
-# plot_average_loss(traces)
+def objective(trial):
+    params = {
+        "num_layers": trial.suggest_int("num_layer",1, 7),
+        "hidden_size": trial.suggest_int("hidden_size", 2, 16),
+        "learning_rate":trial.suggest_loguniform("learning_rate", 1e-6, 1e-2)
+    }
+    pass
+
+
+
+plot_average_loss(traces)
 # torch.save(model.state_dict(), 'trained_models/IQN_100k'+T+'.dict')
 
 
 
 #######################################################
-
-
-
-
-def run(model, scalers, target, 
-        train_x, train_t, 
-        valid_x, valid_t, traces,
-        n_batch=50, 
-        n_iterations=200000, 
-        learning_rate=1.e-4, 
-        traces_step=50, 
-        traces_window=50,
-        save_model=True):
-
-    optimizer = torch.optim.Adam(model.parameters(), 
-                                 lr=learning_rate) 
-    
-    traces = train(model, optimizer, 
-                      average_quantile_loss,
-                      get_batch,
-                      train_x, train_t, 
-                      valid_x, valid_t,
-                      n_batch, 
-                  n_iterations,
-                  traces,
-                  step=traces_step, 
-                  window=traces_window)
-
-    plot_average_loss(traces)
-
-    if save_model:
-        torch.save(model.state_dict(), 'trained_models/iqn_model_CONSECUTIVE_%s.dict' % target)
-
-    return utils.ModelHandler(model, scalers) 
+###INFERENCE
+#load if necessary
+# model =  utils.RegressionModel(nfeatures=train_x.shape[1], 
+#                ntargets=1,
+#                nlayers=8, 
+#                hidden_size=4, 
+#                dropout=0.3)
+# PATH='trained_models/IQN_100kRecoDatapT.dict'
+# # 'trained_models/IQN_100k'+T+'.dict
+# model.load_state_dict(torch.load(PATH))
 
 
 if T== 'RecoDatapT':
@@ -554,82 +519,55 @@ elif T == 'RecoDatam':
     x_min, x_max = 0, 18
 
 
-def plot_model(df, dnn, target, src,
-               fgsize=(6, 6), 
-               ftsize=20):
-    gfile ='fig_model_%s.png' % target
-    xbins = 100
-    xmin  = src['xmin']
-    xmax  = src['xmax']
-    xlabel= src['xlabel']
+
+
+
+def plot_model(df, dnn,
+            #    gfile='fig_model.png', 
+               save_image=False,
+               fgsize=(8, 8), 
+               ftsize=20,
+               save_pred=False):
+        
+    # ----------------------------------------------
+    # histogram RecoDatapT
+    # ----------------------------------------------
+    xmin, xmax = x_min, x_max
+    xbins = 80
     xstep = (xmax - xmin)/xbins
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=fgsize)
     
     ax.set_xlim(xmin, xmax)
+
     #ax.set_ylim(ymin, ymax)
-    ax.set_xlabel(xlabel, fontsize=ftsize)
+    # ax.set_xlabel(r'$p_{T}$ (GeV)', fontsize=ftsize)
     ax.set_xlabel('reco jet '+label, fontsize=ftsize)
     ax.set_ylabel(y_label_dict[T], fontsize=ftsize)
 
-    ax.hist(df[target], 
+    ax.hist(df[T], 
             bins=xbins, 
-            range=(xmin, xmax), 
-            alpha=0.3, 
-            color='blue', 
-            density=True, 
-            label='simulation',
-            save_pred=True, 
-            save_image=True)
+            range=(xmin, xmax), alpha=0.35, color='blue',
+            label='Data',density=True)
    
     y = dnn(df)
     if save_pred:
         pred_df = pd.DataFrame({T+'_predicted':y})
-        pred_df.to_csv('predicted_data/consecutive/'+T+'_predicted_consecutive.csv')
+        pred_df.to_csv('predicted_data/'+T+'_predicted_consecutive.csv')
     ax.hist(y, 
             bins=xbins, 
             range=(xmin, xmax), 
-            alpha=0.3, 
-            color='red', 
-            density=True, 
-            label='dnn model')
-    #ax.grid()
-    ax.legend()
-    
+            alpha=0.35, 
+            color='red', label='IQN',density=True)
+    ax.grid()
+
     plt.tight_layout()
+    plt.legend()
     if save_image:
-        plt.savefig('images/consecutive/'+T+'100k_IQN_Consecutive.png')
+        plt.savefig('images/'+T+'100k_IQN_Consecutive.png')
     # plt.show()
-###########
 
+dnn = utils.ModelHandler(model, scalers)
 
-
-# model =  utils.RegressionModel(nfeatures=train_x.shape[1], 
-#                ntargets=1,
-#                nlayers=8, 
-#                hidden_size=4)
-import torch.nn as nn
-
-model = nn.Sequential(nn.Linear( train_x.shape[1], 50),
-                      nn.ReLU(),
-                      
-                      nn.Linear(50, 50),
-                      nn.ReLU(),
-                      
-                      nn.Linear(50, 50),
-                      nn.ReLU(), 
- 
-                      nn.Linear(50, 50),
-                      nn.ReLU(), 
- 
-                      nn.Linear(50, 1))
-
-# model=model()
-traces = ([], [], [], [])
-
-# dnn = utils.ModelHandler(model, scalers)
-dnn = run(model, scalers, target, 
-          train_x, train_t, 
-          valid_x, valid_t, traces)
 
 plot_model(test_data, dnn)
